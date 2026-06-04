@@ -105,7 +105,6 @@ class ResUNet(nn.Module):
         self.enc1 = Resblock(64, 128)
         self.enc2 = Resblock(128, 256)
         self.enc3 = Resblock(256, 512)
-        
         self.enc4 = Resblock(512, 1024) # bottleneck
 
 
