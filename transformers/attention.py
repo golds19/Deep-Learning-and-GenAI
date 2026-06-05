@@ -203,7 +203,6 @@ context_vecs = ca(batch)
 print(f"context_vecs with causal attention: {context_vecs}")
 print(f"context_vecs.shape: {context_vecs.shape}")
 
-
 # Extending single-head attention layers
 '''
 Multi-head attention
@@ -239,7 +238,7 @@ class MultiHeadAttention(nn.Module):
 
         self.d_out     = d_out
         self.num_heads = num_heads
-        self.head_dim  = d_out // num_heads # reduce the projection dim to match desised output dim
+        self.head_dim  = d_out // num_heads # reduce the projection dim to match desired output dim
 
         self.W_query         = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_key           = nn.Linear(d_in, d_out, bias=qkv_bias)
@@ -297,3 +296,48 @@ context_vecs = mha(batch)
 
 print(f"MHA context_vecs: {context_vecs}")
 print(f"context_vecs shape - mha: {context_vecs.shape}")
+
+
+'''
+MultiheadAttention using with Pytorch scaled dot product and Flashattention
+'''
+class MHAPytorchScaledDotProduct(nn.Module):
+    def __init__(self, d_in, d_out, num_heads, context_length, dropout=0.0, qkv_bias=False):
+        super().__init__()
+
+        self.num_heads      = num_heads
+        self.context_length = context_length
+        self.head_dim       = d_out // num_heads
+        self.d_out          = d_out
+
+        self.qkv            = nn.Linear(d_in, 3 * d_out, bias=qkv_bias)
+        self.proj           = nn.Linear(d_in, d_out)
+        self.dropout        = dropout
+
+    def forward(self, x):
+        batch_size, num_tokens, embed_dim = x.shape
+
+        # (b, num_tokens, embed_dim) -> (b, num_tokens, 3 * embed_dim)
+        qkv = self.qkv(x)
+
+        # (b, num_tokens, 3 * embed_dim) -> (b, num_tokens, 3, num_heads, head_dim)
+        qkv = qkv.view(batch_size, num_tokens, 3, self.num_heads, self.head_dim)
+
+        # (b, num_tokens, 3, num_heads, head_dim) -> (3, b, num_heads, num_tokens, head_dim)
+        qkv = qkv.permute(2,0,3,1,4)
+
+        # (3, b, num_heads, num_tokens, head_dim) -> 3 times (b, num_heads, num_tokens, head_dim)
+        queries, keys, values = qkv
+
+        use_dropout = 0. if not self.training else self.dropout
+
+        context_vec = nn.functional.scaled_dot_product_attention(
+            queries, keys, values, attn_mask=None, dropout_p=use_dropout, is_causal=True
+        )
+
+        # combine heads, where self.d_out = self.num_heads * self.head_dim
+        context_vec = context_vec.transpose(1, 2).contiguous().view(batch_size, num_tokens, self.d_out)
+
+        context_vec = self.proj(context_vec)
+
+        return context_vec
