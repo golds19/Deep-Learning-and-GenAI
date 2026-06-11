@@ -173,7 +173,8 @@ class Unet(nn.Module):
         x = self.final_out(x)
 
         return x
-     
+    
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 model = Unet(in_ch=3, out_ch=1).to(device)
